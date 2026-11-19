@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#ffc400">
+<title>Booking Status | TSY TAXI</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--yellow:#ffc400;--ink:#111;--muted:#777;--green:#16834a;--red:#e34c38}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%;font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:var(--ink)}
+body{min-height:100svh;background:#f5f5f7}
+
+.topbar{min-height:68px;background:#111;color:#fff;border-bottom:4px solid var(--yellow);display:flex;align-items:center;justify-content:center;padding:0 20px}
+.brand{display:flex;align-items:center;gap:10px}
+.brand img{width:43px;height:43px;border-radius:50%;object-fit:contain;background:#fff;padding:2px}
+.brand strong{font-size:18px;font-weight:950;letter-spacing:1.3px}
+.brand span{color:var(--yellow);font-size:9px;letter-spacing:2px;font-weight:800;display:block;margin-top:4px}
+
+main{max-width:600px;margin:0 auto;padding:20px}
+
+.status-container{background:#fff;border-radius:12px;padding:24px;box-shadow:0 2px 8px #0001;text-align:center;margin-bottom:20px}
+
+/* Waiting State */
+.timer-circle{width:120px;height:120px;margin:0 auto 20px;position:relative}
+.timer-svg{transform:rotate(-90deg)}
+.timer-bg{fill:none;stroke:#e9e9e9;stroke-width:8}
+.timer-progress{fill:none;stroke:var(--yellow);stroke-width:8;stroke-linecap:round;transition:stroke-dashoffset 1s linear}
+.timer-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:32px;font-weight:900}
+.status-title{font-size:20px;font-weight:900;margin-bottom:8px}
+.status-message{font-size:14px;color:var(--muted);margin-bottom:20px}
+
+/* Partner Info */
+.partner-card{background:#e8f5e9;border:2px solid var(--green);border-radius:12px;padding:20px;margin:20px 0;text-align:left}
+.partner-card h3{font-size:18px;margin-bottom:16px;color:var(--green)}
+.partner-info{display:grid;gap:12px;margin-bottom:16px}
+.info-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #d4f4dd}
+.info-row:last-child{border-bottom:0}
+.info-label{font-size:12px;color:var(--muted);font-weight:700}
+.info-value{font-size:14px;font-weight:900}
+.call-btn{background:var(--green);color:#fff;border:0;padding:14px;border-radius:8px;font-weight:900;font-size:14px;width:100%;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.call-btn:hover{background:#0e5a32}
+
+/* Map */
+.map-container{background:#fff;border-radius:12px;padding:16px;box-shadow:0 2px 8px #0001;margin-bottom:20px}
+.map-container h3{font-size:16px;margin-bottom:12px}
+#trackingMap{width:100%;height:300px;border-radius:8px}
+
+/* Buttons */
+.btn-end{background:var(--red);color:#fff;border:0;padding:16px;border-radius:8px;font-weight:900;font-size:14px;width:100%;cursor:pointer;margin-top:20px}
+.btn-end:hover{background:#b81c1c}
+
+/* Success State */
+.success-icon{width:80px;height:80px;background:#e8f5e9;border-radius:50%;display:grid;place-items:center;font-size:40px;margin:0 auto 20px}
+.btn-home{background:var(--yellow);color:var(--ink);border:0;padding:16px;border-radius:8px;font-weight:900;font-size:14px;width:100%;cursor:pointer;margin-top:20px}
+.btn-home:hover{background:#d49c00}
+
+/* Cancelled State */
+.error-icon{width:80px;height:80px;background:#ffe1e1;border-radius:50%;display:grid;place-items:center;font-size:40px;margin:0 auto 20px;color:var(--red)}
+
+/* Hide states */
+.status-waiting,.status-assigned,.status-tracking,.status-completed,.status-cancelled{display:none}
+.status-waiting.active,.status-assigned.active,.status-tracking.active,.status-completed.active,.status-cancelled.active{display:block}
+
+/* Arrival Notification */
+.arrival-notification{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#16834a;color:#fff;padding:16px 24px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:9999;display:none;animation:slideDown 0.3s ease}
+.arrival-notification.show{display:block}
+@keyframes slideDown{from{transform:translateX(-50%) translateY(-20px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}
+.arrival-notification strong{display:block;font-size:16px;margin-bottom:4px}
+.arrival-notification span{font-size:12px;opacity:0.9}
+
+/* Completion Notification */
+.completion-notification{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#ffc400;color:#111;padding:16px 24px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:9999;display:none;animation:slideDown 0.3s ease}
+.completion-notification.show{display:block}
+.completion-notification strong{display:block;font-size:16px;margin-bottom:4px;font-weight:900}
+.completion-notification span{font-size:12px;opacity:0.8;font-weight:600}
+
+@media(max-width:768px){
+  main{padding:16px}
+  .topbar{min-height:60px;padding:0 16px}
+  .brand img{width:36px;height:36px}
+  .brand strong{font-size:16px}
+  .status-container{padding:20px}
+  .timer-circle{width:100px;height:100px}
+  .timer-text{font-size:28px}
+  #trackingMap{height:250px}
+}
+</style>
+</head>
+
+<body>
+
+<!-- Arrival Notification -->
+<div class="arrival-notification" id="arrivalNotification">
+  <strong>🎉 Driver Arrived!</strong>
+  <span>Your driver has arrived at the pickup location</span>
+</div>
+
+<!-- Completion Notification -->
+<div class="completion-notification" id="completionNotification">
+  <strong>🎉 Trip Completed Successfully!</strong>
+  <span>Thank you for riding with TSY TAXI</span>
+</div>
+
+<!-- Review Modal -->
+<div id="reviewModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;padding:20px;overflow-y:auto">
+  <div style="max-width:400px;margin:40px auto;background:#fff;border-radius:16px;padding:24px;box-shadow:0 10px 40px rgba(0,0,0,0.3)">
+    <h2 style="font-size:20px;margin-bottom:8px;text-align:center">Rate Your Trip</h2>
+    <p style="font-size:13px;color:#777;text-align:center;margin-bottom:24px">How was your experience?</p>
+
+    <div style="text-align:center;margin-bottom:24px">
+      <div id="starRating" style="font-size:40px;cursor:pointer;user-select:none">
+        <span class="star" data-rating="1">⭐</span>
+        <span class="star" data-rating="2">⭐</span>
+        <span class="star" data-rating="3">⭐</span>
+        <span class="star" data-rating="4">⭐</span>
+        <span class="star" data-rating="5">⭐</span>
+      </div>
+    </div>
+
+    <textarea id="reviewFeedback" placeholder="Share your feedback (optional)" style="width:100%;padding:12px;border:2px solid #e9e9e9;border-radius:8px;font-size:14px;min-height:80px;margin-bottom:16px;font-family:inherit"></textarea>
+
+    <div style="display:flex;gap:12px">
+      <button id="skipReview" style="flex:1;padding:14px;border:2px solid #e9e9e9;border-radius:8px;background:#fff;font-weight:900;cursor:pointer">Skip</button>
+      <button id="submitReview" style="flex:1;padding:14px;border:0;border-radius:8px;background:#ffc400;font-weight:900;cursor:pointer">Submit</button>
+    </div>
+  </div>
+</div>
+
+<header class="topbar">
+  <div class="brand">
+    <img src="logo.jpeg" alt="TSY Taxi">
+    <div><strong>TSY TAXI</strong><span>YOUR RIDE. YOUR WAY.</span></div>
+  </div>
+</header>
+
+<main>
+
+<!-- WAITING STATE -->
+<div class="status-container status-waiting active" id="waitingState">
+  <div class="timer-circle">
+    <svg class="timer-svg" width="120" height="120">
+      <circle class="timer-bg" cx="60" cy="60" r="54"></circle>
+      <circle class="timer-progress" id="timerProgress" cx="60" cy="60" r="54"
+        stroke-dasharray="339.292" stroke-dashoffset="0"></circle>
+    </svg>
+    <div class="timer-text" id="timerText">2:00</div>
+  </div>
+  <h2 class="status-title">Finding Your Driver...</h2>
+  <p class="status-message">Please wait while we assign a partner to your ride.</p>
+</div>
+
+<!-- ASSIGNED STATE -->
+<div class="status-container status-assigned" id="assignedState">
+  <div style="width:120px;height:120px;margin:0 auto 20px;position:relative">
+    <div style="width:120px;height:120px;background:#fff3e0;border-radius:50%;display:grid;place-items:center;font-size:48px;animation:pulse 2s ease-in-out infinite">
+      ⏳
+    </div>
+  </div>
+  <h2 class="status-title">Partner Assigned!</h2>
+  <p class="status-message">Waiting for partner to accept your trip request...</p>
+  <p style="font-size:12px;color:var(--muted);margin-top:12px">You'll see driver details once they accept</p>
+</div>
+
+<!-- TRACKING STATE -->
+<div class="status-container status-tracking" id="trackingState">
+  <h2 class="status-title">Driver On The Way</h2>
+  <p class="status-message" id="trackingMessage">Arriving in 5 minutes</p>
+
+  <div class="map-container">
+    <h3>📍 Live Location</h3>
+    <div id="trackingMap"></div>
+  </div>
+
+  <div class="partner-card">
+    <div class="partner-info">
+      <div class="info-row">
+        <span class="info-label">Driver</span>
+        <span class="info-value" id="trackPartnerName">-</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Vehicle</span>
+        <span class="info-value" id="trackPartnerVehicle">-</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Fare</span>
+        <span class="info-value" id="trackFare">₹0</span>
+      </div>
+    </div>
+    <button class="call-btn" id="callBtnTrack">📞 Call Driver</button>
+  </div>
+</div>
+
+<!-- COMPLETED STATE -->
+<div class="status-container status-completed" id="completedState">
+  <div class="success-icon">🎉</div>
+  <h2 class="status-title">Trip Completed!</h2>
+  <p class="status-message">Congratulations! Your trip was successfully completed.</p>
+
+  <div class="partner-card">
+    <div class="partner-info">
+      <div class="info-row">
+        <span class="info-label">Distance</span>
+        <span class="info-value" id="completedDistance">-</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Total Fare</span>
+        <span class="info-value" id="completedFare">₹0</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Driver</span>
+        <span class="info-value" id="completedDriver">-</span>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn-home" onclick="window.location.href='home.html'">🏠 Back to Home</button>
+</div>
+
+<!-- CANCELLED STATE -->
+<div class="status-container status-cancelled" id="cancelledState">
+  <div class="error-icon">😞</div>
+  <h2 class="status-title">Booking Cancelled</h2>
+  <p class="status-message">Sorry, your booking was cancelled. Please try booking again at another time.</p>
+  <button class="btn-home" onclick="window.location.href='home.html'">🏠 Back to Home</button>
+</div>
+
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBwd7gY4QG96MKI-At38eXMVF-pQQU0F-s",
+  authDomain: "tsytaxi-fcbd3.firebaseapp.com",
+  projectId: "tsytaxi-fcbd3",
+  storageBucket: "tsytaxi-fcbd3.firebasestorage.app",
+  messagingSenderId: "160017935162",
+  appId: "1:160017935162:web:3574d6e57febf56c5bfe03"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// Load current user from localStorage
+window.currentUser = JSON.parse(localStorage.getItem("tsyTaxiUser") || "{}");
+
+const bookingId = new URLSearchParams(window.location.search).get("id");
+if (!bookingId) {
+  alert("No booking ID provided");
+  window.location.href = "home.html";
+}
+
+let trackingMap = null;
+let timerInterval = null;
+let remainingSeconds = 120; // 2 minutes
+let previousStatus = null; // Track status changes
+let partnerMarker = null; // Partner location marker
+let partnerListener = null; // Real-time partner location listener
+let currentBookingStatus = null; // Current booking status for ETA calculation
+
+// Timer countdown
+function startTimer() {
+  const circle = document.getElementById("timerProgress");
+  const text = document.getElementById("timerText");
+  const circumference = 339.292;
+
+  timerInterval = setInterval(() => {
+    remainingSeconds--;
+
+    const minutes = Math.floor(remainingSeconds / 60);
+    const seconds = remainingSeconds % 60;
+    text.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+    const progress = (remainingSeconds / 120) * circumference;
+    circle.style.strokeDashoffset = circumference - progress;
+
+    if (remainingSeconds <= 0) {
+      clearInterval(timerInterval);
+    }
+  }, 1000);
+}
+
+// Show state
+function showState(state) {
+  document.querySelectorAll('[class*="status-"]').forEach(el => el.classList.remove('active'));
+  const stateEl = document.getElementById(state + 'State');
+  if (stateEl) stateEl.classList.add('active');
+}
+
+// Initialize map
+function initMap() {
+  if (!trackingMap) {
+    trackingMap = L.map('trackingMap').setView([8.33611, 77.86444], 13);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap'
+    }).addTo(trackingMap);
+  }
+}
+
+// Listen to booking changes
+const bookingRef = doc(db, "bookings", bookingId);
+onSnapshot(bookingRef, (snapshot) => {
+  if (!snapshot.exists()) {
+    showState('cancelled');
+    return;
+  }
+
+  const booking = snapshot.data();
+  console.log("Booking update:", booking);
+
+  // Update UI based on status
+  if (booking.status === 'CANCELLED' || booking.status === 'REJECTED') {
+    if (timerInterval) clearInterval(timerInterval);
+    showState('cancelled');
+  }
+  else if (booking.status === 'COMPLETED') {
+    if (timerInterval) clearInterval(timerInterval);
+    document.getElementById('completedDistance').textContent = booking.distanceKm.toFixed(2) + ' km';
+    document.getElementById('completedFare').textContent = '₹' + booking.fare.toFixed(2);
+    document.getElementById('completedDriver').textContent = booking.partnerName || 'Driver';
+
+    // Show completion notification if status just changed to COMPLETED
+    if (previousStatus === 'IN_PROGRESS') {
+      const notification = document.getElementById('completionNotification');
+      notification.classList.add('show');
+      setTimeout(() => notification.classList.remove('show'), 5000);
+
+      // Show review modal after 2 seconds
+      if (!reviewShown) {
+        reviewShown = true;
+        setTimeout(() => {
+          document.getElementById('reviewModal').style.display='block';
+        }, 2000);
+      }
+    }
+
+    showState('completed');
+  }
+  else if (booking.status === 'ACCEPTED' || booking.status === 'IN_PROGRESS') {
+    if (timerInterval) clearInterval(timerInterval);
+    document.getElementById('trackPartnerName').textContent = booking.partnerName || '-';
+    document.getElementById('trackPartnerVehicle').textContent = booking.partnerVehicle || '-';
+    document.getElementById('trackFare').textContent = '₹' + booking.fare.toFixed(2);
+    document.getElementById('callBtnTrack').onclick = () => window.location.href = `tel:${booking.partnerPhone}`;
+
+    // Update message based on status
+    if (booking.status === 'ACCEPTED') {
+      document.getElementById('trackingMessage').textContent = 'Driver is on the way to pickup location';
+    } else if (booking.status === 'IN_PROGRESS') {
+      document.getElementById('trackingMessage').textContent = 'Trip in progress to destination';
+
+      // Show arrival notification if status just changed from ACCEPTED to IN_PROGRESS
+      if (previousStatus === 'ACCEPTED') {
+        const notification = document.getElementById('arrivalNotification');
+        notification.classList.add('show');
+        setTimeout(() => notification.classList.remove('show'), 5000);
+      }
+    }
+
+    initMap();
+
+    // Add pickup marker
+    if (booking.pickup && booking.pickup.lat) {
+      L.marker([booking.pickup.lat, booking.pickup.lon], {
+        icon: L.divIcon({
+          className: '',
+          html: '<div style="width:20px;height:20px;background:#16834a;border:3px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>',
+          iconSize: [20, 20]
+        })
+      }).addTo(trackingMap).bindPopup('📍 Pickup Location');
+    }
+
+    // Add destination marker
+    if (booking.destination && booking.destination.lat) {
+      L.marker([booking.destination.lat, booking.destination.lon], {
+        icon: L.divIcon({
+          className: '',
+          html: '<div style="width:20px;height:20px;background:#e34c38;border:3px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>',
+          iconSize: [20, 20]
+        })
+      }).addTo(trackingMap).bindPopup('🏁 Destination');
+    }
+
+    // Draw route line
+    if (booking.pickup && booking.destination && booking.pickup.lat && booking.destination.lat) {
+      const routeLine = L.polyline(
+        [
+          [booking.pickup.lat, booking.pickup.lon],
+          [booking.destination.lat, booking.destination.lon]
+        ],
+        {
+          color: '#ffc400',
+          weight: 4,
+          opacity: 0.7,
+          dashArray: '10, 10'
+        }
+      ).addTo(trackingMap);
+
+      // Set initial message (will be updated by real-time tracking)
+      if (booking.status === 'ACCEPTED') {
+        document.getElementById('trackingMessage').textContent = 'Driver is on the way to pickup location';
+      } else if (booking.status === 'IN_PROGRESS') {
+        document.getElementById('trackingMessage').textContent = 'Trip in progress to destination';
+      }
+
+      // Fit bounds
+      const bounds = L.latLngBounds(
+        [booking.pickup.lat, booking.pickup.lon],
+        [booking.destination.lat, booking.destination.lon]
+      );
+      trackingMap.fitBounds(bounds, { padding: [50, 50] });
+    }
+
+    // Start live partner tracking
+    if (booking.partnerId) {
+      startPartnerTracking(booking.partnerId, booking.pickup, booking.destination, booking.status);
+    }
+
+    showState('tracking');
+  }
+  else if (booking.status === 'ASSIGNED') {
+    if (timerInterval) clearInterval(timerInterval);
+    showState('assigned');
+  }
+  else {
+    // PENDING state - show timer
+    if (!timerInterval) startTimer();
+    showState('waiting');
+  }
+
+  // Update status tracking
+  previousStatus = booking.status;
+  currentBookingStatus = booking.status;
+});
+
+// Calculate distance between two GPS coordinates (Haversine formula)
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c; // Distance in km
+}
+
+// Start live partner location tracking
+async function startPartnerTracking(partnerId, pickup, destination, tripStatus) {
+  // Stop existing listener
+  if (partnerListener) {
+    partnerListener();
+    partnerListener = null;
+  }
+
+  if (!partnerId || !trackingMap) return;
+
+  try {
+    // Connect to partners database (tsytaxi-7e9b0)
+    const partnersConfig = {
+      apiKey: "AIzaSyDg1rboXdFIWnyxH3nw3NV0UGk8vDOzUJc",
+      authDomain: "tsytaxi-7e9b0.firebaseapp.com",
+      projectId: "tsytaxi-7e9b0"
+    };
+
+    const { initializeApp: initApp2 } = await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js");
+    const { getFirestore: getFS2, doc: doc2, onSnapshot: onSnap2 } = await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js");
+
+    const partnersApp = initApp2(partnersConfig, "partnersTrackingApp");
+    const partnersDb = getFS2(partnersApp);
+
+    // Listen to partner location updates
+    const partnerRef = doc2(partnersDb, "partners", partnerId);
+    partnerListener = onSnap2(partnerRef, (docSnapshot) => {
+      if (!docSnapshot.exists()) return;
+
+      const partnerData = docSnapshot.data();
+
+      // Check if partner has current location
+      if (partnerData.currentLocation && partnerData.currentLocation.latitude) {
+        const lat = partnerData.currentLocation.latitude;
+        const lon = partnerData.currentLocation.longitude;
+
+        // Update or create partner marker
+        if (partnerMarker) {
+          // Update existing marker position
+          partnerMarker.setLatLng([lat, lon]);
+        } else {
+          // Create new partner marker with car icon
+          partnerMarker = L.marker([lat, lon], {
+            icon: L.divIcon({
+              className: '',
+              html: '<div style="width:32px;height:32px;background:#2196F3;border:3px solid white;border-radius:50%;box-shadow:0 3px 10px rgba(0,0,0,0.4);display:grid;place-items:center;font-size:18px">🚗</div>',
+              iconSize: [32, 32]
+            }),
+            zIndexOffset: 1000
+          }).addTo(trackingMap);
+
+          partnerMarker.bindPopup('🚗 Your Driver');
+        }
+
+        // Calculate real-time distance and ETA (use current booking status)
+        const currentStatus = currentBookingStatus || tripStatus;
+
+        if (currentStatus === 'ACCEPTED' && pickup && pickup.lat) {
+          // Calculate distance from partner to pickup
+          const distanceKm = calculateDistance(lat, lon, pickup.lat, pickup.lon);
+          const avgSpeedKmh = 30; // Average city speed
+          const etaMinutes = Math.round((distanceKm / avgSpeedKmh) * 60);
+
+          // Update message with real-time ETA
+          document.getElementById('trackingMessage').textContent =
+            `Driver arriving in ~${etaMinutes} min (${distanceKm.toFixed(1)} km away)`;
+
+          // Show partner → pickup
+          const bounds = L.latLngBounds(
+            [lat, lon],
+            [pickup.lat, pickup.lon]
+          );
+          trackingMap.fitBounds(bounds, { padding: [80, 80] });
+
+        } else if (currentStatus === 'IN_PROGRESS' && destination && destination.lat) {
+          // Calculate distance from partner to destination
+          const distanceKm = calculateDistance(lat, lon, destination.lat, destination.lon);
+          const avgSpeedKmh = 30;
+          const etaMinutes = Math.round((distanceKm / avgSpeedKmh) * 60);
+
+          // Update message with real-time ETA
+          document.getElementById('trackingMessage').textContent =
+            `Destination in ~${etaMinutes} min (${distanceKm.toFixed(1)} km)`;
+
+          // Show partner → destination
+          const bounds = L.latLngBounds(
+            [lat, lon],
+            [destination.lat, destination.lon]
+          );
+          trackingMap.fitBounds(bounds, { padding: [80, 80] });
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error("Partner tracking error:", error);
+  }
+}
+
+// Review Modal Logic
+let selectedRating=0;
+let currentBookingId=bookingId;
+let reviewShown=false;
+
+document.querySelectorAll('.star').forEach(star=>{
+  star.addEventListener('click',()=>{
+    selectedRating=parseInt(star.dataset.rating);
+    document.querySelectorAll('.star').forEach((s,idx)=>{
+      s.style.opacity=idx<selectedRating?'1':'0.3';
+    });
+  });
+});
+
+document.getElementById('skipReview').addEventListener('click',()=>{
+  document.getElementById('reviewModal').style.display='none';
+});
+
+document.getElementById('submitReview').addEventListener('click',async()=>{
+  if(selectedRating===0){
+    alert('Please select a rating');
+    return;
+  }
+
+  const feedback=document.getElementById('reviewFeedback').value.trim();
+
+  try{
+    const{collection,addDoc,serverTimestamp}=await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js");
+
+    await addDoc(collection(db,"reviews"),{
+      bookingId:currentBookingId,
+      userId:window.currentUser?.uid||'',
+      rating:selectedRating,
+      feedback:feedback,
+      createdAt:serverTimestamp()
+    });
+
+    alert('Thank you for your feedback!');
+    document.getElementById('reviewModal').style.display='none';
+  }catch(error){
+    console.error("Review error:",error);
+    alert('Error submitting review');
+  }
+});
+
+// Start timer on load
+startTimer();
+</script>
+</body>
+</html>
